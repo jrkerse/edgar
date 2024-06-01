@@ -18,21 +18,19 @@ func (db *DB) InsertUser(email, hashedPassword string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
+	var id int
+
 	query := `
 		INSERT INTO users (created, email, hashed_password)
-		VALUES ($1, $2, $3)`
+		VALUES ($1, $2, $3)
+		RETURNING id`
 
-	result, err := db.ExecContext(ctx, query, time.Now(), email, hashedPassword)
+	err := db.GetContext(ctx, &id, query, time.Now(), email, hashedPassword)
 	if err != nil {
 		return 0, err
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-
-	return int(id), err
+	return id, err
 }
 
 func (db *DB) GetUser(id int) (*User, bool, error) {

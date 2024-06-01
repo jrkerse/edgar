@@ -5,43 +5,34 @@ import (
 
 	"edgar.avani.io/assets"
 
-	"github.com/alexedwards/flow"
+	"github.com/julienschmidt/httprouter"
+	"github.com/justinas/alice"
 )
 
 func (app *application) routes() http.Handler {
-	mux := flow.New()
+	mux := httprouter.New()
 	mux.NotFound = http.HandlerFunc(app.notFound)
 
-	mux.Use(app.logAccess)
-	mux.Use(app.recoverPanic)
-	mux.Use(app.securityHeaders)
-
 	fileServer := http.FileServer(http.FS(assets.EmbeddedFiles))
-	mux.Handle("/static/...", fileServer, "GET")
+	mux.Handler("GET", "/static/*filepath", fileServer)
 
-	mux.Group(func(mux *flow.Mux) {
-		mux.Use(app.preventCSRF)
-		mux.Use(app.authenticate)
+	appMiddleware := alice.New(app.logAccess, app.preventCSRF, app.authenticate)
 
-		mux.HandleFunc("/", app.home, "GET")
+	mux.Handler("GET", "/", appMiddleware.ThenFunc(app.home))
 
-		mux.Group(func(mux *flow.Mux) {
-			mux.Use(app.requireAnonymousUser)
+	mux.Handler("GET", "/signup", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.signup))
+	mux.Handler("POST", "/signup", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.signup))
+	mux.Handler("GET", "/login", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.login))
+	mux.Handler("POST", "/login", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.login))
+	mux.Handler("GET", "/forgotten-password", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.forgottenPassword))
+	mux.Handler("POST", "/forgotten-password", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.forgottenPassword))
+	mux.Handler("GET", "/forgotten-password-confirmation", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.forgottenPasswordConfirmation))
+	mux.Handler("GET", "/password-reset/:plaintextToken", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.passwordReset))
+	mux.Handler("POST", "/password-reset/:plaintextToken", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.passwordReset))
+	mux.Handler("GET", "/password-reset-confirmation", appMiddleware.Append(app.requireAnonymousUser).ThenFunc(app.passwordResetConfirmation))
 
-			mux.HandleFunc("/signup", app.signup, "GET", "POST")
-			mux.HandleFunc("/login", app.login, "GET", "POST")
-			mux.HandleFunc("/forgotten-password", app.forgottenPassword, "GET", "POST")
-			mux.HandleFunc("/forgotten-password-confirmation", app.forgottenPasswordConfirmation, "GET")
-			mux.HandleFunc("/password-reset/:plaintextToken", app.passwordReset, "GET", "POST")
-			mux.HandleFunc("/password-reset-confirmation", app.passwordResetConfirmation, "GET")
-		})
+	mux.Handler("POST", "/logout", appMiddleware.Append(app.requireAuthenticatedUser).ThenFunc(app.logout))
 
-		mux.Group(func(mux *flow.Mux) {
-			mux.Use(app.requireAuthenticatedUser)
-
-			mux.HandleFunc("/logout", app.logout, "POST")
-		})
-	})
-
-	return mux
+	defaultMiddleware := alice.New(app.recoverPanic, app.securityHeaders)
+	return defaultMiddleware.Then(mux)
 }

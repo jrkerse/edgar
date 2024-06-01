@@ -10,7 +10,7 @@ import (
 	"edgar.avani.io/internal/token"
 	"edgar.avani.io/internal/validator"
 
-	"github.com/alexedwards/flow"
+	"github.com/julienschmidt/httprouter"
 )
 
 func (app *application) home(w http.ResponseWriter, r *http.Request) {
@@ -281,7 +281,7 @@ func (app *application) forgottenPasswordConfirmation(w http.ResponseWriter, r *
 }
 
 func (app *application) passwordReset(w http.ResponseWriter, r *http.Request) {
-	plaintextToken := flow.Param(r.Context(), "plaintextToken")
+	plaintextToken := httprouter.ParamsFromContext(r.Context()).ByName("plaintextToken")
 
 	hashedToken := token.Hash(plaintextToken)
 
